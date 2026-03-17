@@ -1,73 +1,144 @@
-# React + TypeScript + Vite
+# NBA Analytics Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A real-time NBA analytics dashboard built as a portfolio project to demonstrate advanced React patterns, data visualization, and state management at scale.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+### Live Game Feed
+Fetches today's real NBA games from the Ball Don't Lie API and polls every 30 seconds for updated scores, quarter, and game time. Cards display the live score split bar, in-progress indicator, and final status.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Interactive Player Scatter Plot
+D3-powered scatter plot visualizing all active NBA players by Points Per Game (x-axis) vs Assists Per Game (y-axis). Bubble size encodes Rebounds Per Game. Points are colored by conference (East / West). Hover for a stat tooltip, click any player to open the detail drawer.
 
-## Expanding the ESLint configuration
+### Multi-Dimensional Filter Panel
+Sidebar powered by Recoil atoms. Filters compose reactively via a Recoil selector — every change instantly re-renders the scatter plot without any prop drilling or context re-renders.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Search** — fuzzy name search
+- **Season** — switch between NBA seasons
+- **Position** — toggle Guard / Forward / Center
+- **Team** — multi-select by team abbreviation
+- **Stat sliders** — dual-handle range sliders for PPG, APG, and RPG
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Player Detail Drawer
+Click any scatter plot dot to slide open a player detail panel showing:
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- Season stat summary (PPG / APG / RPG / STL / BLK / GP)
+- D3 line chart of per-game performance for the last 20 games
+- Switchable stat view — Points, Assists, or Rebounds
+- Team and division info
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Web Worker Aggregation
+Raw player and season average data is merged off the main thread via a dedicated Web Worker, keeping the UI thread free during heavy data joins.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | React 18 + TypeScript |
+| Build tool | Vite |
+| State management | Recoil (atoms + selectors) |
+| Data fetching | TanStack React Query |
+| Visualization | D3 v7 |
+| Styling | Tailwind CSS v3 |
+| Off-thread compute | Web Workers (native) |
+| Data source | Ball Don't Lie API v1 |
+
+---
+
+## Architecture Highlights
+
+**Recoil atom graph**
+```
+filtersAtom ─────────────────────────┐
+                                     ▼
+enrichedPlayersAtom ──► filteredPlayersSelector ──► ScatterPlot
+                                                 └──► FilterPanel (read counts)
+
+selectedPlayerAtom ──► PlayerDrawer
+
+gameFeedAtom ──► GameFeed
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+**Web Worker flow**
+```
+fetchPlayers()  ──┐
+                  ├──► aggregation.worker.ts ──► enrichedPlayersAtom
+fetchAverages() ──┘         (off main thread)
+```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+**Live feed polling**
+```
+useSimulatedFeed
+  └── fetchTodaysGames() on mount + every 30s
+        └── setFeed(games) ──► gameFeedAtom ──► GameFeed
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+---
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- A free API key from [balldontlie.io](https://www.balldontlie.io)
+
+### Installation
+
+```bash
+git clone https://github.com/your-username/nba-analytics.git
+cd nba-analytics
+npm install
+```
+
+### Environment
+
+Create a `.env` file in the project root:
+
+```
+VITE_BALLDONTLIE_KEY=your_api_key_here
+```
+
+### Run
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173).
+
+### Build
+
+```bash
+npm run build
+```
+
+---
+
+## API Notes
+
+The Ball Don't Lie free tier provides access to:
+- `/games` — live and historical game scores
+- `/players` — full player roster
+
+The `season_averages` and `stats` endpoints require a paid plan. Player stat averages in this project use embedded 2024-25 season data. To enable live stat fetching, upgrade the API plan and restore the `fetchSeasonAverages` calls in `usePlayerStats.ts`.
+
+---
+
+## Project Structure
+
+```
+src/
+  api/              # Ball Don't Lie API client
+  atoms/            # Recoil atoms and derived selectors
+  components/
+    FilterPanel/    # Multi-dimensional filter sidebar
+    ScatterPlot/    # D3 player scatter plot
+    GameFeed/       # Live game score cards
+    PlayerDrawer/   # Slide-out player detail + line chart
+  data/             # Embedded 2024-25 season averages
+  hooks/            # usePlayerStats, useSimulatedFeed
+  workers/          # Web Worker for stat aggregation
 ```
