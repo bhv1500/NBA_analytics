@@ -1,7 +1,7 @@
 import { useRecoilState, useRecoilValue } from "recoil";
 import { filtersAtom, type Position } from "../../atoms/filters";
 import { playersAtom } from "../../atoms/players";
-import { useMemo } from "react";
+import { useMemo, useState, useRef } from "react";
 
 const POSITIONS: Position[] = ["G", "F", "C"];
 const SEASONS = [2025, 2024, 2023, 2022];
@@ -54,6 +54,41 @@ function RangeSlider({
 export default function FilterPanel() {
   const [filters, setFilters] = useRecoilState(filtersAtom);
   const players = useRecoilValue(playersAtom);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const suggestions = useMemo(() => {
+    const q = filters.search.trim().toLowerCase();
+    if (!q) return [];
+    return players
+      .map((p) => `${p.first_name} ${p.last_name}`)
+      .filter((name) => name.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [filters.search, players]);
+
+  const selectSuggestion = (name: string) => {
+    setFilters((f) => ({ ...f, search: name }));
+    setShowSuggestions(false);
+    setActiveIndex(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, -1));
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      e.preventDefault();
+      selectSuggestion(suggestions[activeIndex]);
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false);
+      setActiveIndex(-1);
+    }
+  };
 
   const teams = useMemo(() => {
     const seen = new Map<string, string>();
@@ -87,14 +122,41 @@ export default function FilterPanel() {
     <aside className="w-64 shrink-0 bg-slate-900 border-r border-slate-800 p-4 overflow-y-auto">
       <h2 className="text-lg font-semibold text-white mb-4">Filters</h2>
 
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Search player..."
-        value={filters.search}
-        onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-        className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 mb-4 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-      />
+      {/* Search with autocomplete */}
+      <div className="relative mb-4">
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="Search player..."
+          value={filters.search}
+          onChange={(e) => {
+            setFilters((f) => ({ ...f, search: e.target.value }));
+            setShowSuggestions(true);
+            setActiveIndex(-1);
+          }}
+          onFocus={() => setShowSuggestions(true)}
+          onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+          onKeyDown={handleKeyDown}
+          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        />
+        {showSuggestions && suggestions.length > 0 && (
+          <ul className="absolute z-50 left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded shadow-lg max-h-48 overflow-y-auto">
+            {suggestions.map((name, i) => (
+              <li
+                key={name}
+                onMouseDown={() => selectSuggestion(name)}
+                className={`px-3 py-1.5 text-sm cursor-pointer transition-colors ${
+                  i === activeIndex
+                    ? "bg-indigo-600 text-white"
+                    : "text-slate-300 hover:bg-slate-700"
+                }`}
+              >
+                {name}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       {/* Season */}
       <div className="mb-4">
